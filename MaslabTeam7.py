@@ -8,6 +8,8 @@
 import cv2
 import numpy as np
 from math import pi
+from math import tan
+
 from os import system
 import multiprocessing
 import time
@@ -70,6 +72,7 @@ if not dryrun:
 
 redangle_mp = multiprocessing.Value('d', 0)
 redangle_new = multiprocessing.Value('i', 0)
+ty = multiprocessing.Value('d', 0)
 redangle = 0
 redint = 0
 rederiv = 0
@@ -86,6 +89,11 @@ killtimer = 0
 factor = 12
 
 t1 = 0
+
+h1 = .186
+h2 = .0254
+a1 = -15.0
+
 
 angleMode = True
 amtimer = 0
@@ -114,6 +122,7 @@ def setArmAngle(angle_setpoint):
     clicks_setpoint = angle_setpoint * (1/clicksToDegrees)
     ravenbrd.set_motor_target(Raven.MotorChannel.CH1, clicks_setpoint)
     return
+
 
 
 def imageproc(redangle_mp):
@@ -248,6 +257,13 @@ def imageproc(redangle_mp):
             good_red.append([cv2.convexHull(c),cx,cy])
         else:
             good_green.append([cv2.convexHull(c),cx,cy])
+    if good_red and good_green:
+        ty.value = max(good_red[0][2], good_green[0][2])
+    elif good_green:
+        ty.value = good_green[0][2]
+    elif good_red:
+        ty.value = good_red[0][2]
+
 
 
     #circ_contours, _ = cv2.findContours(bozoMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -281,6 +297,14 @@ def bt(x):
     if x > 100: return 100
     return x
 
+
+def get_distance():
+    m_ty = ty.value
+    angleRad = pi * (ty + a1) / 180.0
+    distanceFromHub = (h2 - h1) / tan(angleRad)
+    print(distanceFromHub)
+    return distanceFromHub
+
 tofcycle = 0
 
 cut1 = 5
@@ -298,7 +322,7 @@ if __name__ == "__main__":
     gimmegimmegimme(False)
     while True:
         # Read a frame
-
+        dist = get_distance()
         if redangle_new.value:
             redangle_new.value = 0
             redangle = redangle_mp.value
