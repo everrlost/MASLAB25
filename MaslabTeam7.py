@@ -311,7 +311,7 @@ def bt(x):
 
 def get_distance():
     m_ty = ty.value
-    angleRad = pi * (ty + a1) / 180.0
+    angleRad = pi * (m_ty + a1) / 180.0
     distanceFromHub = (h2 - h1) / tan(angleRad)
     print(distanceFromHub)
     return distanceFromHub
