@@ -87,7 +87,7 @@ lastred = 0
 angleP = 1.3
 angleI = 6
 angleD = -0.004
-feedforward = 14
+angleFeedforward = 12
 intmax = 3.5
 killtimer = 0
 
@@ -424,8 +424,8 @@ if __name__ == "__main__":
             turn = redangle * angleP + redint * angleI + rederiv * angleD
             turn = -turn
             if abs(turn) < 0.5: pass
-            elif turn > 0: turn += feedforward
-            elif turn < 0: turn -= feedforward
+            elif turn > 0: turn += angleFeedforward
+            elif turn < 0: turn -= angleFeedforward
             print(redangle, -turn, ["????", "RED", "REDONTOP", "GREENONTOP"][stack_type.value])
             
             if abs(redangle) < cut1:
@@ -437,7 +437,7 @@ if __name__ == "__main__":
                 turn = 0
                 amtimer = 50
             if seek_cube or stack_type.value == 1:
-                turn = feedforward*2.5
+                turn = angleFeedforward*2.5
                 print("seek_cube")
             if turn > 100: turn = 100
             if turn < -100: turn = -100
