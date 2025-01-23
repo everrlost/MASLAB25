@@ -464,7 +464,7 @@ if __name__ == "__main__":
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, abs(bt(rturn)), reverse=rturn<0)
             amtimer -=1
             #if amtimer == 0:
-            print(redangle)
+            #print(redangle)
             if abs(redangle) > cut2:
                 angleMode = True
                 redint = 0
