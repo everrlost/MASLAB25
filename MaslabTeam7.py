@@ -107,7 +107,7 @@ donehere = 0
 
 switchcl = True
 
-def gimmegimmegimme(closeit=True):
+def grab_cube(closeit=True):
     if switchcl: closeit = not closeit
     ravenbrd.set_servo_position(servo_bottom, -90 if closeit else 90)
     time.sleep(0.8)
@@ -251,8 +251,8 @@ def imageproc(redangle_mp):
         col = c_colors[i]
         if cv2.contourArea(c) < 200: continue
         # 4 pi^2 r^2 / pi r ^2 -> 4 pi
-        shittiness = (cv2.arcLength(c,True)**2) / (4 * cv2.contourArea(c) * pi)
-        if shittiness > 4: continue
+        inverse_circularity = (cv2.arcLength(c,True)**2) / (4 * cv2.contourArea(c) * pi)
+        if inverse_circularity > 4: continue
         M = cv2.moments(c)
         cx = int(M['m10']/M['m00'])
         cy = int(M['m01']/M['m00'])
@@ -274,8 +274,8 @@ def imageproc(redangle_mp):
     #good_circs = []
     #for c in circ_contours:
     #    if cv2.contourArea(c) < 150: continue
-    #    shittiness = (cv2.arcLength(c,True)**2) / (4 * cv2.contourArea(c) * pi)
-    #    if shittiness > 2.2: continue
+    #    inverse_circularity = (cv2.arcLength(c,True)**2) / (4 * cv2.contourArea(c) * pi)
+    #    if inverse_circularity > 2.2: continue
     #    good_circs.append(c)
     #    M = cv2.moments(c)
     #    cx = int(M['m10']/M['m00'])
@@ -323,7 +323,7 @@ cut2 = 10
 
 didgrab = False
 
-hardstop = False
+seek_cube = False
 
 
 if __name__ == "__main__":
@@ -332,15 +332,15 @@ if __name__ == "__main__":
     time.sleep(1)
     p1 = multiprocessing.Process(target=ipthread, args=(redangle_mp,))
     p1.start()
-    gimmegimmegimme(False)
+    grab_cube(False)
     while True:
         # Read a frame
         dist = get_distance()
         if redangle_new.value:
             if redangle_new.value == 2:
-                hardstop = True
+                seek_cube = True
             else:
-                hardstop = False
+                seek_cube = False
             redangle_new.value = 0
             redangle = redangle_mp.value
 
@@ -363,50 +363,50 @@ if __name__ == "__main__":
 
         t1 = time.time()
         if donehere >= 6:
-            ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 100)
-            ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 100)
+            ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
+            ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
             ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, 0) #not sure why need rev
             ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
             if not didgrab:
-                gimmegimmegimme(True)
+                grab_cube(True)
                 time.sleep(0.12)
-                gimmegimmegimme(False)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 100)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 100)
+                grab_cube(False)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1,50,reverse=True) #not sure why need rev
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2,50)
                 time.sleep(0.12)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 100)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 100)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, 0) #not sure why need rev
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
-                gimmegimmegimme(True)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 100)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 100)
+                grab_cube(True)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1,100) #not sure why need rev
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2,100)
                 time.sleep(0.25)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 100)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 100)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1,100,reverse=True) #not sure why need rev
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2,100,reverse=True)
                 time.sleep(0.25)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 100)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 100)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, 0) #not sure why need rev
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
-                gimmegimmegimme(False)
+                grab_cube(False)
                 didgrab = True
                 print("i grabbed: ", ["????", "RED", "REDONTOP", "GREENONTOP"][stack_type.value])
                 stack_type.value = 1
                 time.sleep(0.5)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 100)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 100)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2,75,reverse=True) #not sure why need rev
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1,75)
                 time.sleep(0.2)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 100)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 100)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2,0,reverse=True) #not sure why need rev
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1,0)
                 time.sleep(3)
@@ -436,9 +436,9 @@ if __name__ == "__main__":
                 angleMode = False
                 turn = 0
                 amtimer = 50
-            if hardstop or stack_type.value == 1:
+            if seek_cube or stack_type.value == 1:
                 turn = feedforward*2.5
-                print("HARDSTOP")
+                print("seek_cube")
             if turn > 100: turn = 100
             if turn < -100: turn = -100
             #if redangle < -4: turn = 25
@@ -446,8 +446,8 @@ if __name__ == "__main__":
             #else: turn = 0
             if killtimer < 5:
                 if not dryrun:
-                    ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 100)
-                    ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 100)
+                    ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
+                    ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
                     lturn = -turn# - 15
                     rturn = turn# - 15
                     ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, abs(bt(lturn)), reverse=lturn>0) #not sure why need rev
@@ -455,11 +455,11 @@ if __name__ == "__main__":
                 #else:
                 #    print(turn)
         else:
-            ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 100)
-            ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 100)
+            ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
+            ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
             lturn = 26
             rturn = 26
-            if not hardstop:
+            if not seek_cube:
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, abs(bt(lturn)), reverse=lturn>0) #not sure why need rev
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, abs(bt(rturn)), reverse=rturn<0)
             amtimer -=1
