@@ -301,6 +301,7 @@ def imageproc(redangle_mp):
     else:
         redangle_new.value = 2
         pass#killtimer += 1
+    stack_type.value = 1
 
 
 def bt(x):
