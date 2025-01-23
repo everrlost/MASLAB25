@@ -324,6 +324,17 @@ cut2 = 10
 didgrab = False
 
 seek_cube = False
+seek_target = 0
+seekP = 1.5
+seekI = 6
+seekD = -0.005
+seekFeedforward = 16
+seekint = 0
+lastseek = 0
+
+seek_current = 0
+seek_cycle = 0
+
 
 
 if __name__ == "__main__":
@@ -420,7 +431,7 @@ if __name__ == "__main__":
             rederiv = (lastred - redangle)/0.001 
             lastred = redangle
 
-            zvel = imu.get_data()[1][2]
+            
             turn = redangle * angleP + redint * angleI + rederiv * angleD
             turn = -turn
             if abs(turn) < 0.5: pass
@@ -437,8 +448,17 @@ if __name__ == "__main__":
                 turn = 0
                 amtimer = 50
             if seek_cube or stack_type.value == 1:
-                turn = angleFeedforward*2.5
-                print("seek_cube")
+                #turn = angleFeedforward*2.5
+                serr = seek_current - seek_target
+                seekint += serr*0.001
+                if seekint > intmax: seekint = intmax
+                if seekint < -intmax: seekint = -intmax
+                turn = seekP * serr + seekD * ((lastseek - serr)/0.001) + seekI * seekint
+                if abs(turn) < 0.5: pass
+                elif turn > 0: turn += seekFeedforward
+                elif turn < 0: turn -= seekFeedforward
+                lastseek = serr
+                print("seek_cube", seek_current, seek_target, turn)
             if turn > 100: turn = 100
             if turn < -100: turn = -100
             #if redangle < -4: turn = 25
@@ -476,11 +496,13 @@ if __name__ == "__main__":
                     donehere += 1
                 else:
                     donehere = 0
-
-
-
         #print((time.time() - t1)*1000)
+        zvel = imu.get_data()[1][2]
         redangle += factor * zvel * (180 / pi) * 0.001
+        seek_current += factor * zvel * (180 / pi) * 0.001
+        seek_cycle += 1
+        if seek_cycle % 3000 == 0:
+            seek_target = seek_current + 60
         time.sleep(0.001)
         if dryrun:
             pass#cv2.imshow("ITS FUCKKING RED NOW", scaled)
