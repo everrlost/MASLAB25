@@ -23,8 +23,8 @@ from raven import Raven
 
 i2c = busio.I2C(board.SCL, board.SDA)
 spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
-timeofflight = adafruit_vl53l0x.VL53L0X(i2c)
-#timeofflight = None
+#timeofflight = adafruit_vl53l0x.VL53L0X(i2c)
+timeofflight = None
 
 
 while not spi.try_lock():
