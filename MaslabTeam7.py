@@ -32,28 +32,23 @@ while not spi.try_lock():
 
 spi.configure(baudrate=5000000)
 
-imu = ICM42688(spi)
-imu.begin()
 
 vdev = 0
 
-# Capture video from webcam
-capture = cv2.VideoCapture("/dev/video" + str(vdev))
+
 
 kp_history = [[]] * 8
 
-lowpass_pos = False
 
-fov = 55 #field of view, degrees
 
 arm_rpc = 1/260 #rotations per click of arm encoder
 arm_ratio = 1/16.25
 clicksToDegrees = arm_rpc * arm_ratio * (1/360)
 
-arm_motor = Raven.MotorChannel.CH2
+arm_motor = Raven.MotorChannel.CH4
 
 ravenbrd = Raven()
-ravenbrd.set_motor_encoder(arm_motor, 99) # Reset encoder
+ravenbrd.set_motor_encoder(arm_motor, 0) # Reset encoder
 ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.POSITION) # Set motor mode to POSITION
 ravenbrd.set_motor_pid(arm_motor, p_gain = 100, i_gain = 0, d_gain = 0) # Set PID values
 
