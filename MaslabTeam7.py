@@ -64,7 +64,7 @@ angleFeedforward = 12
 
 def getArmAngle():
     armClicks = ravenbrd.get_motor_encoder(arm_motor)
-    armAngle = armClicks * clicksToDegrees
+    armAngle = armClicks # * clicksToDegrees
     print(armAngle)
     return armAngle
 
