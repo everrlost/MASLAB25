@@ -44,15 +44,15 @@ kp_history = [[]] * 8
 arm_rpc = 1/(64*270) #rotations per click of arm encoder
 arm_ratio = 1
 clicksToDegrees = arm_rpc * arm_ratio * 360 
-
+degreesToClicks = 1 / clicksToDegrees
 arm_motor = Raven.MotorChannel.CH3
 
 ravenbrd = Raven()
-""" ravenbrd.set_motor_encoder(arm_motor, 0) # Reset encoder
+ravenbrd.set_motor_encoder(arm_motor, 0) # Reset encoder
 ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.POSITION) # Set motor mode to POSITION
-ravenbrd.set_motor_pid(arm_motor, p_gain = 100, i_gain = 0, d_gain = 0) # Set PID values """
+ravenbrd.set_motor_pid(arm_motor, p_gain = 100, i_gain = 0, d_gain = 0) # Set PID values 
 
-ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.DIRECT)
+
                         
 angleP = 1.3
 angleI = 6
@@ -81,6 +81,7 @@ if __name__ == "__main__":
     while True:
         ravenbrd.set_motor_torque_factor(arm_motor, 100)
         ravenbrd.set_motor_speed_factor(arm_motor, 100, reverse = True)
+        ravenbrd.set_motor_target(arm_motor, 360 * clicksToDegrees)
         getArmAngle()
         """
         good_keypoints = sorted(good_keypoints, key=lambda k: k.size)
