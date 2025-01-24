@@ -45,7 +45,7 @@ arm_rpc = 1/260 #rotations per click of arm encoder
 arm_ratio = 1/16.25
 clicksToDegrees = arm_rpc * arm_ratio * (1/360)
 
-arm_motor = Raven.MotorChannel.CH4
+arm_motor = Raven.MotorChannel.CH3
 
 ravenbrd = Raven()
 ravenbrd.set_motor_encoder(arm_motor, 0) # Reset encoder
