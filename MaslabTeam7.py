@@ -49,9 +49,10 @@ lowpass_pos = False
 
 fov = 55 #field of view, degrees
 
-arm_rpc = 1/260 #rotations per click of arm encoder
-arm_ratio = 1/16.25
-clicksToDegrees = arm_rpc * arm_ratio * (1/360)
+arm_rpc = 1/(64*270) #rotations per click of arm encoder
+arm_ratio = 1
+clicksToDegrees = arm_rpc * arm_ratio * 360 
+degreesToClicks = 1 / clicksToDegrees
 
 
 left_drive = Raven.MotorChannel.CH1
@@ -95,9 +96,9 @@ factor = 12
 
 t1 = 0
 
-h1 = .186
-h2 = .0254
-a1 = -15.0
+h1 = .186 #height of camera
+h2 = .0254 #height of block center
+a1 = -15.0 #angle of camera
 
 
 angleMode = True
