@@ -43,7 +43,7 @@ kp_history = [[]] * 8
 
 arm_rpc = 1/260 #rotations per click of arm encoder
 arm_ratio = 1/16.25
-clicksToDegrees = arm_rpc * arm_ratio * (1/360)
+clicksToDegrees = arm_rpc * arm_ratio * (1/360) * -1
 
 arm_motor = Raven.MotorChannel.CH3
 
@@ -61,7 +61,7 @@ angleFeedforward = 12
 
 def getArmAngle():
     armClicks = ravenbrd.get_motor_encoder(arm_motor)
-    armAngle = armClicks # * clicksToDegrees
+    armAngle = armClicks * clicksToDegrees
     print(armAngle)
     return armAngle
 
@@ -80,8 +80,8 @@ if __name__ == "__main__":
 
     while True:
         ravenbrd.set_motor_torque_factor(arm_motor, 100)
-        ravenbrd.set_motor_speed_factor(arm_motor, 100, reverse=False)
-       
+        ravenbrd.set_motor_speed_factor(arm_motor, 100, reverse = true)
+        getArmAngle()
         """
         good_keypoints = sorted(good_keypoints, key=lambda k: k.size)
         if good_keypoints:
