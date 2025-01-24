@@ -77,12 +77,16 @@ def setArmAngle(angle_setpoint):
 if __name__ == "__main__":
     time.sleep(1)
 
-
+    ravenbrd.set_motor_target(arm_motor, -360 * degreesToClicks)
     while True:
         ravenbrd.set_motor_torque_factor(arm_motor, 100)
     
-        ravenbrd.set_motor_target(arm_motor, -360 * degreesToClicks)
-        getArmAngle()
+
+        if getArmAngle() <359:
+            ravenbrd.set_motor_target(arm_motor, 0 * degreesToClicks)
+            getArmAngle()
+        elif getArmAngle() > -1:
+            ravenbrd.set_motor_target(arm_motor, -360 * degreesToClicks)
         """
         good_keypoints = sorted(good_keypoints, key=lambda k: k.size)
         if good_keypoints:
