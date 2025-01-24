@@ -48,7 +48,7 @@ clicksToDegrees = arm_rpc * arm_ratio * (1/360)
 arm_motor = Raven.MotorChannel.CH4
 
 ravenbrd = Raven()
-ravenbrd.set_motor_encoder(arm_motor, 0) # Reset encoder
+ravenbrd.set_motor_encoder(arm_motor, 69) # Reset encoder
 ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.POSITION) # Set motor mode to POSITION
 ravenbrd.set_motor_pid(arm_motor, p_gain = 100, i_gain = 0, d_gain = 0) # Set PID values
 
