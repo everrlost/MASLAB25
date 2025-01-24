@@ -80,7 +80,7 @@ if __name__ == "__main__":
 
     while True:
         ravenbrd.set_motor_torque_factor(arm_motor, 50)
-        ravenbrd.set_motor_speed_factor(arm_motor, 50, reverse = True)
+        ravenbrd.set_motor_speed_factor(arm_motor, 10)
        
         """
         good_keypoints = sorted(good_keypoints, key=lambda k: k.size)
