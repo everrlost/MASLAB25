@@ -48,9 +48,9 @@ clicksToDegrees = arm_rpc * arm_ratio * (1/360)
 arm_motor = Raven.MotorChannel.CH4
 
 ravenbrd = Raven()
-ravenbrd.set_motor_encoder(arm_motor, 69) # Reset encoder
-ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.POSITION) # Set motor mode to POSITION
-ravenbrd.set_motor_pid(arm_motor, p_gain = 100, i_gain = 0, d_gain = 0) # Set PID values
+ravenbrd.set_motor_encoder(arm_motor, 0) # Reset encoder
+#ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.POSITION) # Set motor mode to POSITION
+#ravenbrd.set_motor_pid(arm_motor, p_gain = 100, i_gain = 0, d_gain = 0) # Set PID values
 
 angleP = 1.3
 angleI = 6
@@ -60,7 +60,7 @@ angleFeedforward = 12
 def getArmAngle():
     armClicks = ravenbrd.get_motor_encoder(arm_motor)
     armAngle = armClicks # * clicksToDegrees
-    print(armAngle)
+    print(ravenbrd.get_motor_encoder(arm_motor))
     return armAngle
 
 def setArmAngle(angle_setpoint):
