@@ -41,9 +41,9 @@ kp_history = [[]] * 8
 
 
 
-arm_rpc = 1/260 #rotations per click of arm encoder
-arm_ratio = 1/16.25
-clicksToDegrees = arm_rpc * arm_ratio * (1/360) * -1
+arm_rpc = 1/(64*270) #rotations per click of arm encoder
+arm_ratio = 1
+clicksToDegrees = arm_rpc * arm_ratio * 360 
 
 arm_motor = Raven.MotorChannel.CH3
 
