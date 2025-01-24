@@ -78,12 +78,9 @@ def setArmAngle(angle_setpoint):
 
 
 if __name__ == "__main__":
-    system("v4l2-ctl --device /dev/video" + str(vdev) + " -c auto_exposure=1")
-    system("v4l2-ctl --device /dev/video" + str(vdev) + " -c exposure_time_absolute=500") # 500
     time.sleep(1)
-    p1 = multiprocessing.Process(target=ipthread, args=(redangle_mp,))
-    p1.start()
-    grab_cube(False)
+
+
     while True:
         getArmAngle()
        
