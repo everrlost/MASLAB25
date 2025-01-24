@@ -302,6 +302,7 @@ def imageproc(redangle_mp):
     else:
         redangle_new.value = 2
         pass#killtimer += 1
+    #stack_type.value = 1
 
 
 def bt(x):
@@ -314,7 +315,7 @@ def get_distance():
     m_ty = ty.value
     angleRad = pi * (m_ty + a1) / 180.0
     distanceFromHub = (h2 - h1) / tan(angleRad)
-    print(distanceFromHub)
+    #print(distanceFromHub)
     return distanceFromHub
 
 tofcycle = 0
@@ -324,7 +325,18 @@ cut2 = 10
 
 didgrab = False
 
-seek_cube = False
+seek_cube = True
+seek_target = 0
+seekP = 2
+seekI = 0#6
+seekD = 0#-0.005
+seekFeedforward = 24
+seekint = 0
+lastseek = 0
+
+seek_current = 0
+seek_cycle = 0
+
 
 
 if __name__ == "__main__":
@@ -338,7 +350,7 @@ if __name__ == "__main__":
         # Read a frame
         dist = get_distance()
         if redangle_new.value:
-            if redangle_new.value == 2:
+            if redangle_new.value == 2 or stack_type.value == 1:
                 seek_cube = True
             else:
                 seek_cube = False
@@ -414,20 +426,19 @@ if __name__ == "__main__":
                 didgrab = False
                 angleMode = True
                 donehere = 0
-        elif angleMode:
+        elif angleMode or seek_cube:
             redint += redangle*0.001
             if redint > intmax: redint = intmax
             if redint < -intmax: redint = -intmax
             rederiv = (lastred - redangle)/0.001 
             lastred = redangle
 
-            zvel = imu.get_data()[1][2]
+            
             turn = redangle * angleP + redint * angleI + rederiv * angleD
             turn = -turn
             if abs(turn) < 0.5: pass
             elif turn > 0: turn += angleFeedforward
             elif turn < 0: turn -= angleFeedforward
-            print(redangle, -turn, ["????", "RED", "REDONTOP", "GREENONTOP"][stack_type.value])
             
             if abs(redangle) < cut1:
                 amtimer += 1
@@ -437,9 +448,20 @@ if __name__ == "__main__":
                 angleMode = False
                 turn = 0
                 amtimer = 50
-            if seek_cube or stack_type.value == 1:
-                turn = angleFeedforward*2.5
-                print("seek_cube")
+            if seek_cube:
+                #turn = angleFeedforward*2.5
+                serr = seek_target - seek_current
+                seekint += serr*0.001
+                if seekint > intmax: seekint = intmax
+                if seekint < -intmax: seekint = -intmax
+                turn = seekP * serr + seekD * ((lastseek - serr)/0.001) + seekI * seekint
+                if abs(turn) < 0.5: pass
+                elif turn > 0: turn += seekFeedforward
+                elif turn < 0: turn -= seekFeedforward
+                lastseek = serr
+                print("seek_cube", seek_current, seek_target, turn)
+            else:
+                print(redangle, -turn, ["????", "RED", "REDONTOP", "GREENONTOP"][stack_type.value])
             if turn > 100: turn = 100
             if turn < -100: turn = -100
             #if redangle < -4: turn = 25
@@ -465,7 +487,7 @@ if __name__ == "__main__":
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, abs(bt(rturn)), reverse=rturn<0)
             amtimer -=1
             #if amtimer == 0:
-            #print(redangle)
+            print(redangle)
             if abs(redangle) > cut2:
                 angleMode = True
                 redint = 0
@@ -477,11 +499,13 @@ if __name__ == "__main__":
                     donehere += 1
                 else:
                     donehere = 0
-
-
-
         #print((time.time() - t1)*1000)
+        zvel = imu.get_data()[1][2]
         redangle += factor * zvel * (180 / pi) * 0.001
+        seek_current += zvel * (180 / pi) * 0.001
+        seek_cycle += 1
+        if seek_cycle % 600 == 0:
+            seek_target = seek_current + 18
         time.sleep(0.001)
         if dryrun:
             pass#cv2.imshow("ITS FUCKKING RED NOW", scaled)
