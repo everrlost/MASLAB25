@@ -1,2 +1,4 @@
 # MASLAB25
-Code for MASLAB 2025 Team 7: Ricky and the Rizzlers
+Code for MIT Mobile Autonomous Systems Competition 2025
+Team 7
+For information on the build process, visit [MASLAB](https://maslab.mit.edu:444/2025/wiki/team07)
