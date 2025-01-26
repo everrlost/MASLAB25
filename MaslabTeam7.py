@@ -105,7 +105,7 @@ switchcl = True
 
 
 armlo = 5
-armhi = -165
+armhi = -195
 
 
 def gimmegimmegimme(closeit=True):
@@ -244,7 +244,7 @@ def get_distance():
 tofcycle = 0
 
 angleToMove = 5
-moveToAngle = 10
+moveToAngle = 8
 
 
 seek_target = 0
@@ -271,7 +271,7 @@ VICTORY = 9
 state_names = ["SEEK_CUBE", "ANGLE_FOLLOW", "MOVE_FOLLOW", "FINAL_APPROACH", "GRAB_STACK", "WALL_LOCATE", "WALL_APPROACH", "WALL_BACKUP", "DUMP_CUBES", "VICTORY"]
 
 cur_state = SEEK_CUBE
-state_timer = 0
+state_timer = -400
 trans_timer = 0
 
 seen_for = 0
@@ -281,8 +281,13 @@ report = ""
 dorept = False
 rept_cycle = 0
 
-disable_wheels = True
+disable_wheels = False
+actual_grab = True
 
+cumulative_stack = 0
+
+greenchute = 90
+redchute = -90
 
 def transition(tgt):
     global report, cur_state, state_timer, trans_timer, dorept
@@ -315,14 +320,16 @@ def f3d(x):
 
 if __name__ == "__main__":
     system("v4l2-ctl --device /dev/video" + str(vdev) + " -c auto_exposure=1")
-    system("v4l2-ctl --device /dev/video" + str(vdev) + " -c exposure_time_absolute=1200") # 500
+    system("v4l2-ctl --device /dev/video" + str(vdev) + " -c exposure_time_absolute=800") # 500
     time.sleep(0.5)
     n = 0
     p1 = multiprocessing.Process(target=ipthread, args=(redangle_mp,))
     p1.start()
     gimmegimmegimme(False)
     arm_goto(armlo)
-    time.sleep(1.2)
+    print("All systems nominal™")
+    print("Press Enter to get cooking: ")
+    input()
     while True:
         report = "Cur:" + state_names[cur_state]
         # fetch data from imageproc thread
@@ -330,6 +337,7 @@ if __name__ == "__main__":
         if cur_state == SEEK_CUBE:
             if state_timer == 0:
                 seek_target = seek_current
+                cumulative_stack = 0
             serr = seek_target - seek_current
             seekint += serr*0.001
             if seekint > intmax: seekint = intmax
@@ -369,35 +377,81 @@ if __name__ == "__main__":
                 trans_timer += 1
             else:
                 trans_timer = 0
-            if trans_timer > 40:
+            if trans_timer > 6:
                 transition(MOVE_FOLLOW)
             elif notseen_for >= 4:
                 transition(SEEK_CUBE)
         elif cur_state == MOVE_FOLLOW:
-            wheelfwd(40)
-            report += "\tCubeHeight=" + f3d(cube_vfrac.value)
+            wheelfwd(35)
+            report += "\tAngleErr= " + f3d(redangle) + "\tCubeHeight=" + f3d(cube_vfrac.value)
             if abs(redangle) > moveToAngle:
                 trans_timer += 1
             else:
                 trans_timer = 0
-            if trans_timer > 6 and cube_vfrac.value < 0.7:
+            if trans_timer > 2:##and cube_vfrac.value < 0.75:
                 transition(ANGLE_FOLLOW)
-            elif timeofflight.range < 100:
+            elif timeofflight.range < 140:
                 transition(FINAL_APPROACH)
             elif notseen_for >= 4:
-                if cube_vfrac.value > 0.7:
+                if cube_vfrac.value > 0.75:
                     transition(FINAL_APPROACH)
                 else:
                     transition(SEEK_CUBE)
         elif cur_state == FINAL_APPROACH:
             wheelfwd(35)
             tof_range = timeofflight.range
-            maxtime = 100
+            maxtime = 42
             report += "\tTimeout " + str(state_timer)+"/"+str(maxtime) + "\tTOFRange=" + f3d(tof_range)
             if state_timer > maxtime:
                 transition(SEEK_CUBE)
             elif timeofflight.range < 90:
                 transition(GRAB_STACK)
+        elif cur_state == GRAB_STACK:
+            wheelfwd(0)
+            if not actual_grab:
+                time.sleep(0.5)
+                transition(VICTORY)
+            elif state_timer > 20:
+                wrist(0)
+                gimmegimmegimme(True)
+                time.sleep(0.12)
+                gimmegimmegimme(False)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
+                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1,50,reverse=True) #not sure why need rev
+                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2,50)
+                time.sleep(0.12)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
+                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
+                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, 0) #not sure why need rev
+                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
+                time.sleep(0.5)
+                gimmegimmegimme(True)
+                time.sleep(1)
+                arm_goto(armhi)
+                
+                if cumulative_stack == 1:
+                    wrist(redchute)
+                    time.sleep(0.7)
+                    release_cube(True)
+                    time.sleep(0.5)
+                    release_cube(False)
+                else:
+                    wrist(redchute if cumulative_stack == 2 else greenchute)
+                    time.sleep(0.7)
+                    release_cube(True)
+                    time.sleep(0.7)
+                    wrist(greenchute if cumulative_stack == 2 else redchute)
+                    time.sleep(1.3)
+                    release_cube(False)
+
+                time.sleep(0.7)
+                wrist(0)
+                time.sleep(0.7)
+                arm_goto(armlo)
+                time.sleep(0.5)
+                transition(VICTORY)
+            report += "\tType: " + ["", "RED", "REDONTOP", "GREENONTOP"][cumulative_stack]
         else:
             wheelfwd(0)
         
@@ -411,6 +465,11 @@ if __name__ == "__main__":
                 notseen_for = 0
                 seen_for += 1
                 report += "\t(" + ["", "RED", "REDONTOP", "GREENONTOP"][stack_type.value] + " Seen)"
+                if cur_state == ANGLE_FOLLOW or cur_state == MOVE_FOLLOW:
+                    if cumulative_stack <= 1:
+                        cumulative_stack = stack_type.value
+                    elif cumulative_stack != stack_type.value:
+                        cumulative_stack = 1
                 redangle = redangle_mp.value
             redangle_new.value = 0
         zvel = imu.get_data()[1][2]
