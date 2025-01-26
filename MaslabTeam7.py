@@ -25,6 +25,7 @@ i2c = busio.I2C(board.SCL, board.SDA)
 spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
 timeofflight = adafruit_vl53l0x.VL53L0X(i2c)
 #timeofflight = None
+timeofflight.measurement_timing_budget = 20000
 
 
 while not spi.try_lock():
@@ -73,6 +74,7 @@ redangle_mp = multiprocessing.Value('d', 0)
 redangle_new = multiprocessing.Value('i', 0)
 ty = multiprocessing.Value('d', 0)
 stack_type = multiprocessing.Value('i', 1)
+cube_vfrac = multiprocessing.Value('d', 0)
 # 0: whatever
 # 1: red cube alone
 # 2: red on top
@@ -211,9 +213,11 @@ def imageproc(redangle_mp):
     if good_red:
         p = good_red[0][1:]
         angle = (p[0] - 320) * (55 / 640)
+        cube_vfrac.value = p[1] / 480
         redangle = angle
         redangle_mp.value = redangle + 2
         redangle_new.value = 1
+        stack_type.value = 1
         for g in good_green:
             if abs(g[1] - p[0]) < 50:
                 if g[2] < p[1]:
@@ -239,8 +243,8 @@ def get_distance():
 
 tofcycle = 0
 
-cut1 = 5
-cut2 = 10
+angleToMove = 5
+moveToAngle = 10
 
 
 seek_target = 0
@@ -274,15 +278,19 @@ seen_for = 0
 notseen_for = 0
 
 report = ""
+dorept = False
+rept_cycle = 0
 
 disable_wheels = True
 
+
 def transition(tgt):
-    global report
-    report += " Transition to "+state_names[tgt]
+    global report, cur_state, state_timer, trans_timer, dorept
+    report += "\t==> "+state_names[tgt]
     cur_state = tgt
     state_timer = 0
     trans_timer = 0
+    dorept = True
 
 def wheelturn(turn):
     if disable_wheels: turn = 0
@@ -302,9 +310,12 @@ def wheelfwd(fwd):
     ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, abs(bt(lturn)), reverse=lturn>0)
     ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, abs(bt(rturn)), reverse=rturn<0)
 
+def f3d(x):
+    return '%.3f' % x
+
 if __name__ == "__main__":
     system("v4l2-ctl --device /dev/video" + str(vdev) + " -c auto_exposure=1")
-    system("v4l2-ctl --device /dev/video" + str(vdev) + " -c exposure_time_absolute=900") # 500
+    system("v4l2-ctl --device /dev/video" + str(vdev) + " -c exposure_time_absolute=1200") # 500
     time.sleep(0.5)
     n = 0
     p1 = multiprocessing.Process(target=ipthread, args=(redangle_mp,))
@@ -316,21 +327,9 @@ if __name__ == "__main__":
         report = "Cur:" + state_names[cur_state]
         # fetch data from imageproc thread
 
-        if redangle_new.value:
-            if redangle_new.value == 2:# or stack_type.value == 1:
-                seen_for = 0
-                notseen_for += 1
-                report += " (No Stack)"
-            else:
-                notseen_for = 0
-                seen_for += 1
-                report += " (Stack Seen)"
-                redangle = redangle_mp.value
-            redangle_new.value = 0
-        if state == SEEK_CUBE:
-            if state_timer % 600 == 0:
-                seek_target = seek_current + 18
-
+        if cur_state == SEEK_CUBE:
+            if state_timer == 0:
+                seek_target = seek_current
             serr = seek_target - seek_current
             seekint += serr*0.001
             if seekint > intmax: seekint = intmax
@@ -340,15 +339,86 @@ if __name__ == "__main__":
             elif turn > 0: turn += seekFeedforward
             elif turn < 0: turn -= seekFeedforward
             lastseek = serr
-            report += "SeekErr=" + str(serr) + " Turn=" + str(turn)
+            report += "\tSeekErr=" + f3d(serr) + "\tTurn=" + f3d(turn)
             wheelturn(turn)
+            if state_timer % 600 == 0:
+                dorept = True
+                report += "\tTarget=" + f3d(seek_current+18)
+                seek_target = seek_current + 18
 
             if seen_for >= 4:
                 transition(ANGLE_FOLLOW)
+
+        elif cur_state == ANGLE_FOLLOW:
+            redint += redangle*0.001
+            if redint > intmax: redint = intmax
+            if redint < -intmax: redint = -intmax
+            rederiv = (lastred - redangle)/0.001
+            lastred = redangle
+
+
+            turn = redangle * angleP + redint * angleI + rederiv * angleD
+            turn = -turn
+            if abs(turn) < 0.5: pass
+            elif turn > 0: turn += angleFeedforward
+            elif turn < 0: turn -= angleFeedforward
+            report += "\tAngleErr=" + f3d(redangle) + "\tTurn=" + f3d(turn)
+            wheelturn(turn)
+
+            if abs(redangle) < angleToMove:
+                trans_timer += 1
+            else:
+                trans_timer = 0
+            if trans_timer > 40:
+                transition(MOVE_FOLLOW)
+            elif notseen_for >= 4:
+                transition(SEEK_CUBE)
+        elif cur_state == MOVE_FOLLOW:
+            wheelfwd(40)
+            report += "\tCubeHeight=" + f3d(cube_vfrac.value)
+            if abs(redangle) > moveToAngle:
+                trans_timer += 1
+            else:
+                trans_timer = 0
+            if trans_timer > 6 and cube_vfrac.value < 0.7:
+                transition(ANGLE_FOLLOW)
+            elif timeofflight.range < 100:
+                transition(FINAL_APPROACH)
+            elif notseen_for >= 4:
+                if cube_vfrac.value > 0.7:
+                    transition(FINAL_APPROACH)
+                else:
+                    transition(SEEK_CUBE)
+        elif cur_state == FINAL_APPROACH:
+            wheelfwd(35)
+            tof_range = timeofflight.range
+            maxtime = 100
+            report += "\tTimeout " + str(state_timer)+"/"+str(maxtime) + "\tTOFRange=" + f3d(tof_range)
+            if state_timer > maxtime:
+                transition(SEEK_CUBE)
+            elif timeofflight.range < 90:
+                transition(GRAB_STACK)
         else:
             wheelfwd(0)
+        
+        if redangle_new.value:
+            dorept = True
+            if redangle_new.value == 2:# or stack_type.value == 1:
+                seen_for = 0
+                notseen_for += 1
+                report += "\t(No Stack)"
+            else:
+                notseen_for = 0
+                seen_for += 1
+                report += "\t(" + ["", "RED", "REDONTOP", "GREENONTOP"][stack_type.value] + " Seen)"
+                redangle = redangle_mp.value
+            redangle_new.value = 0
         zvel = imu.get_data()[1][2]
         redangle += factor * zvel * (180 / pi) * 0.001
         seek_current += zvel * (180 / pi) * 0.001
         state_timer += 1
+        if dorept or rept_cycle % 20 == 0:
+            print(report)
+        dorept = False
+        rept_cycle += 1
         time.sleep(0.001)
