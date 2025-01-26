@@ -23,8 +23,8 @@ from raven import Raven
 
 i2c = busio.I2C(board.SCL, board.SDA)
 spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
-#timeofflight = adafruit_vl53l0x.VL53L0X(i2c)
-timeofflight = None
+timeofflight = adafruit_vl53l0x.VL53L0X(i2c)
+#timeofflight = None
 
 
 while not spi.try_lock():
@@ -60,11 +60,12 @@ right_drive = Raven.MotorChannel.CH2
 arm_motor = Raven.MotorChannel.CH3
 servo_bottom = Raven.ServoChannel.CH1
 servo_top = Raven.ServoChannel.CH2
+wrist_servo = Raven.ServoChannel.CH3
 
 ravenbrd = Raven()
 ravenbrd.set_motor_encoder(arm_motor, 0) # Reset encoder
 ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.POSITION) # Set motor mode to POSITION
-ravenbrd.set_motor_pid(arm_motor, p_gain = 100, i_gain = 0, d_gain = 0) # Set PID values
+ravenbrd.set_motor_pid(arm_motor, p_gain = 70, i_gain = 1e-4, d_gain = 6) # Set PID values
 
 
 if not dryrun:
@@ -86,10 +87,10 @@ lastred = 0
 
 
 angleP = 1.3
-angleI = 6
+angleI = 7
 angleD = -0.004
-angleFeedforward = 12
-intmax = 3.5
+angleFeedforward = 27
+intmax = 4.5
 killtimer = 0
 
 factor = 12
@@ -108,12 +109,37 @@ donehere = 0
 
 switchcl = True
 
-def grab_cube(closeit=True):
-    if switchcl: closeit = not closeit
-    ravenbrd.set_servo_position(servo_bottom, -90 if closeit else 90)
-    time.sleep(0.8)
-    ravenbrd.set_servo_position(servo_bottom, 0)
 
+armlo = 5
+armhi = -165
+
+
+def gimmegimmegimme(closeit=True):
+    #if switchcl: closeit = not closeit
+    #ravenbrd.set_servo_position(servo_bottom, -90 if closeit else 90)
+    #time.sleep(0.8)
+    #ravenbrd.set_servo_position(servo_bottom, 0)
+    ravenbrd.set_servo_position(servo_bottom, -90 if closeit else 90)
+    ravenbrd.set_servo_position(servo_top, -90 if closeit else 90)
+    time.sleep(0.8)
+
+def release_cube(top=True):
+    if top:
+        ravenbrd.set_servo_position(servo_top, 90)
+    else:
+        ravenbrd.set_servo_position(servo_bottom, 90)
+
+def wrist(angle):
+    ravenbrd.set_servo_position(wrist_servo, angle, min_us=500, max_us=2500)
+
+def relieve():
+    ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.DIRECT)
+    ravenbrd.set_motor_speed_factor(arm_motor, 100,reverse=True)
+    ravenbrd.set_motor_torque_factor(arm_motor, 100)
+    time.sleep(0.1)
+    ravenbrd.set_motor_speed_factor(arm_motor, 0,reverse=True)
+    ravenbrd.set_motor_torque_factor(arm_motor, 0)
+    time.sleep(0.5)
 
 def ipthread(redangle_mp):
     while True:
@@ -126,8 +152,14 @@ def getArmAngle():
 
 def setArmAngle(angle_setpoint):
     clicks_setpoint = angle_setpoint * (1/clicksToDegrees)
-    ravenbrd.set_motor_target(Raven.MotorChannel.CH1, clicks_setpoint)
+    ravenbrd.set_motor_target(arm_motor, clicks_setpoint)
     return
+
+def arm_goto(tgt):
+    ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.POSITION) # Set motor mode to POSITION
+    while abs(getArmAngle()-tgt) > 0.5:
+        setArmAngle(tgt)
+        ravenbrd.set_motor_torque_factor(arm_motor, 100)
 
 
 def imageproc(redangle_mp):
@@ -230,7 +262,7 @@ def imageproc(redangle_mp):
             if not good:
                 allgood = False
                 break
-        if allgood:
+        if allgood`:
             if lowpass_pos:
                 newpos = [0, 0]
                 for p in pos_history:
@@ -337,23 +369,64 @@ lastseek = 0
 seek_current = 0
 seek_cycle = 0
 
+seek_timer = 0
 
+visual_armhi = True
+
+def brakecheck():
+    ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.DIRECT)
+    for n in range(200):
+        ravenbrd.set_motor_speed_factor(arm_motor, 0)
+        ravenbrd.set_motor_torque_factor(arm_motor, 100)
+        time.sleep(0.01)
 
 if __name__ == "__main__":
     system("v4l2-ctl --device /dev/video" + str(vdev) + " -c auto_exposure=1")
-    system("v4l2-ctl --device /dev/video" + str(vdev) + " -c exposure_time_absolute=500") # 500
-    time.sleep(1)
+    system("v4l2-ctl --device /dev/video" + str(vdev) + " -c exposure_time_absolute=1200") # 500
+    time.sleep(0.5)
+    n = 0
     p1 = multiprocessing.Process(target=ipthread, args=(redangle_mp,))
     p1.start()
-    grab_cube(False)
+    gimmegimmegimme(False)
+    arm_goto(armlo)
+    time.sleep(1.2)
+    """gimmegimmegimme(False)
+    wrist(0)
+    time.sleep(0.5)
+    gimmegimmegimme(True)
+    time.sleep(1)
+    arm_goto(armhi)
+    wrist(90)
+    time.sleep(0.7)
+    release_cube(True)
+    time.sleep(0.7)
+    wrist(-90)
+    time.sleep(1.3)
+    release_cube(False)
+    time.sleep(0.7)
+    wrist(0)
+    time.sleep(0.7)
+    arm_goto(armlo)
+    ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.DIRECT)
+    while True:
+        ravenbrd.set_motor_speed_factor(arm_motor, 0)
+        ravenbrd.set_motor_torque_factor(arm_motor, 0)
+     """   
+
+
+
     while True:
         # Read a frame
-        dist = get_distance()
+        #dist = get_distance()
         if redangle_new.value:
-            if redangle_new.value == 2 or stack_type.value == 1:
-                seek_cube = True
+            if redangle_new.value == 2:# or stack_type.value == 1:
+                seek_timer += 1
             else:
-                seek_cube = False
+                seek_timer = 0
+            if seek_timer == 100:
+                visual_armhi = not visual_armhi
+            #seek_cube = seek_timer > 200
+            seek_cube = False
             redangle_new.value = 0
             redangle = redangle_mp.value
 
@@ -374,6 +447,14 @@ if __name__ == "__main__":
 
         #cv2.imshow("Video Feed", blurpreview)
 
+        if visual_armhi:
+            ravenbrd.set_motor_torque_factor(arm_motor, 100)
+            setArmAngle(0)
+        else:
+            ravenbrd.set_motor_torque_factor(arm_motor, 0)
+            setArmAngle(0)
+            
+
         t1 = time.time()
         if donehere >= 6:
             ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
@@ -381,9 +462,10 @@ if __name__ == "__main__":
             ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, 0) #not sure why need rev
             ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
             if not didgrab:
-                grab_cube(True)
+                print("GO")
+                gimmegimmegimme(True)
                 time.sleep(0.12)
-                grab_cube(False)
+                gimmegimmegimme(False)
                 ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
                 ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1,50,reverse=True) #not sure why need rev
@@ -393,38 +475,26 @@ if __name__ == "__main__":
                 ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, 0) #not sure why need rev
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
-                grab_cube(True)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1,100) #not sure why need rev
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2,100)
-                time.sleep(0.25)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1,100,reverse=True) #not sure why need rev
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2,100,reverse=True)
-                time.sleep(0.25)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, 0) #not sure why need rev
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
-                grab_cube(False)
-                didgrab = True
-                print("i grabbed: ", ["????", "RED", "REDONTOP", "GREENONTOP"][stack_type.value])
-                stack_type.value = 1
                 time.sleep(0.5)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2,75,reverse=True) #not sure why need rev
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1,75)
-                time.sleep(0.2)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2,0,reverse=True) #not sure why need rev
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1,0)
-                time.sleep(3)
+                gimmegimmegimme(True)
+                print("i grabbed: ", ["????", "RED", "REDONTOP", "GREENONTOP"][stack_type.value])
+                time.sleep(1)
+                arm_goto(armhi)
+                wrist(90)
+                time.sleep(0.7)
+                release_cube(True)
+                time.sleep(0.7)
+                wrist(-90)
+                time.sleep(1.3)
+                release_cube(False)
+                time.sleep(0.7)
+                wrist(0)
+                time.sleep(0.7)
+                arm_goto(armlo)
+                #ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.DIRECT)
                 didgrab = False
                 angleMode = True
+                visual_armhi = False
                 donehere = 0
         elif angleMode or seek_cube:
             redint += redangle*0.001
@@ -445,7 +515,7 @@ if __name__ == "__main__":
             else:
                 amtimer = 0
             if amtimer > 12:
-                angleMode = False
+                angleMode = True
                 turn = 0
                 amtimer = 50
             if seek_cube:
@@ -467,6 +537,7 @@ if __name__ == "__main__":
             #if redangle < -4: turn = 25
             #elif redangle > 4: turn = -25
             #else: turn = 0
+            #turn = 0
             if killtimer < 5:
                 if not dryrun:
                     ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
@@ -480,8 +551,8 @@ if __name__ == "__main__":
         else:
             ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
             ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-            lturn = 26
-            rturn = 26
+            lturn = 45
+            rturn = 45
             if not seek_cube:
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, abs(bt(lturn)), reverse=lturn>0) #not sure why need rev
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, abs(bt(rturn)), reverse=rturn<0)
@@ -495,8 +566,8 @@ if __name__ == "__main__":
         if donehere < 6 and tofcycle % 10 == 0:
             if timeofflight is not None:
                 t = timeofflight.range
-                if t < 80:
-                    donehere += 1
+                if t < 100:
+                    pass#donehere += 1
                 else:
                     donehere = 0
         #print((time.time() - t1)*1000)
