@@ -90,7 +90,7 @@ lastred = 0
 angleP = 1.6
 angleI = 9
 angleD = -0.004
-angleFeedforward = 38
+angleFeedforward = 15
 intmax = 4.5
 killtimer = 0
 
@@ -117,10 +117,10 @@ moveToAngle = 8
 
 
 seek_target = 0
-seekP = 3.1
+seekP = 6
 seekI = 0#6
-seekD = -.3
-seekFeedforward = 0
+seekD = -.003
+seekFeedforward = 15
 seekint = 0
 lastseek = 0
 
@@ -169,8 +169,9 @@ def setArmAngle(angle_setpoint):
     return
 
 def arm_goto(tgt):
+    sttime = time.time()
     ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.POSITION) # Set motor mode to POSITION
-    while abs(getArmAngle()-tgt) > 0.5:
+    while abs(getArmAngle()-tgt) > 0.5 and time.time() < sttime + 2:
         setArmAngle(tgt)
         ravenbrd.set_motor_torque_factor(arm_motor, 100)
 
@@ -388,7 +389,7 @@ if __name__ == "__main__":
             elif notseen_for >= 4:
                 transition(SEEK_CUBE)
         elif cur_state == MOVE_FOLLOW:
-            wheelfwd(24)
+            wheelfwd(30)
             report += "\tAngleErr= " + f3d(redangle) + "\tCubeHeight=" + f3d(cube_vfrac.value)
             if abs(redangle) > moveToAngle:
                 trans_timer += 1
@@ -404,7 +405,7 @@ if __name__ == "__main__":
                 else:
                     transition(SEEK_CUBE)
         elif cur_state == FINAL_APPROACH:
-            wheelfwd(20)
+            wheelfwd(30)
             tof_range = timeofflight.range
             maxtime = 42
             report += "\tTimeout " + str(state_timer)+"/"+str(maxtime) + "\tTOFRange=" + f3d(tof_range)
