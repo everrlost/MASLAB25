@@ -9,7 +9,6 @@ import cv2
 import numpy as np
 from math import pi
 from math import tan
-
 from os import system
 import multiprocessing
 import time
@@ -110,6 +109,22 @@ switchcl = True
 armlo = 5
 armmid = -40
 armhi = -195
+
+tofcycle = 0
+
+angleToMove = 5
+moveToAngle = 8
+
+
+seek_target = 0
+seekP = .5
+seekI = 0#6
+seekD = -0.003
+seekFeedforward = 10
+seekint = 0
+lastseek = 0
+
+seek_current = 0
 
 
 def gimmegimmegimme(closeit=True, t=0.8):
@@ -245,21 +260,6 @@ def get_distance():
     #print(distanceFromHub)
     return distanceFromHub
 
-tofcycle = 0
-
-angleToMove = 5
-moveToAngle = 8
-
-
-seek_target = 0
-seekP = 1.5
-seekI = 0#6
-seekD = -0.003
-seekFeedforward = 30
-seekint = 0
-lastseek = 0
-
-seek_current = 0
 
 SEEK_CUBE = 0
 ANGLE_FOLLOW = 1
