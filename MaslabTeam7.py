@@ -117,7 +117,7 @@ moveToAngle = 8
 
 
 seek_target = 0
-seekP = 0
+seekP = .2
 seekI = 0#6
 seekD = 0 #-.003
 seekFeedforward = 20
