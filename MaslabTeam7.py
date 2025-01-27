@@ -9,7 +9,6 @@ import cv2
 import numpy as np
 from math import pi
 from math import tan
-
 from os import system
 import multiprocessing
 import time
@@ -18,6 +17,7 @@ import board, busio
 import board
 import busio
 import adafruit_vl53l0x
+import gpiozero
 
 from raven import Raven
 
@@ -25,6 +25,7 @@ i2c = busio.I2C(board.SCL, board.SDA)
 spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
 timeofflight = adafruit_vl53l0x.VL53L0X(i2c)
 #timeofflight = None
+timeofflight.measurement_timing_budget = 20000
 
 
 while not spi.try_lock():
@@ -37,7 +38,6 @@ imu.begin()
 
 
 vdev = 0
-dryrun = False
 
 
 # Capture video from webcam
@@ -45,7 +45,6 @@ capture = cv2.VideoCapture("/dev/video" + str(vdev))
 
 kp_history = [[]] * 8
 
-lowpass_pos = False
 
 fov = 55 #field of view, degrees
 
@@ -61,6 +60,8 @@ arm_motor = Raven.MotorChannel.CH3
 servo_bottom = Raven.ServoChannel.CH1
 servo_top = Raven.ServoChannel.CH2
 wrist_servo = Raven.ServoChannel.CH3
+trapdoor_servo = Raven.ServoChannel.CH4
+
 
 ravenbrd = Raven()
 ravenbrd.set_motor_encoder(arm_motor, 0) # Reset encoder
@@ -68,14 +69,17 @@ ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.POSITION) # Set motor mode to
 ravenbrd.set_motor_pid(arm_motor, p_gain = 70, i_gain = 1e-4, d_gain = 6) # Set PID values
 
 
-if not dryrun:
-    print(ravenbrd.set_motor_mode(left_drive, Raven.MotorMode.DIRECT))
-    print(ravenbrd.set_motor_mode(right_drive, Raven.MotorMode.DIRECT))
+print(ravenbrd.set_motor_mode(left_drive, Raven.MotorMode.DIRECT))
+print(ravenbrd.set_motor_mode(right_drive, Raven.MotorMode.DIRECT))
 
 redangle_mp = multiprocessing.Value('d', 0)
 redangle_new = multiprocessing.Value('i', 0)
 ty = multiprocessing.Value('d', 0)
 stack_type = multiprocessing.Value('i', 1)
+REDONLY = 1
+REDONTOP = 2
+GREENONTOP = 3
+cube_vfrac = multiprocessing.Value('d', 0)
 # 0: whatever
 # 1: red cube alone
 # 2: red on top
@@ -86,10 +90,10 @@ rederiv = 0
 lastred = 0
 
 
-angleP = 1.3
-angleI = 7
+angleP = 1.6
+angleI = 9
 angleD = -0.004
-angleFeedforward = 27
+angleFeedforward = 15
 intmax = 4.5
 killtimer = 0
 
@@ -102,26 +106,56 @@ h2 = .0254 #height of block center
 a1 = -15.0 #angle of camera
 
 
-angleMode = True
-amtimer = 0
-
-donehere = 0
-
 switchcl = True
 
 
 armlo = 5
-armhi = -165
+armmid = -40
+armhi = -195
+
+tofcycle = 0
+
+angleToMove = 5
+moveToAngle = 8
 
 
-def gimmegimmegimme(closeit=True):
+seek_target = 0
+seekP = 6
+seekI = 0#6
+seekD = -.003
+seekFeedforward = 15
+seekint = 0
+lastseek = 0
+
+seek_current = 0
+
+trapdoor_open = -80
+trapdoor_closed = 30
+
+maindoor_servo = gpiozero.Servo(19, min_pulse_width=0.0005, max_pulse_width=0.0025)
+
+def trapdoor(closed=True):
+    ravenbrd.set_servo_position(trapdoor_servo, trapdoor_closed if closed else trapdoor_open)
+
+def maindooropen():
+    maindoor_servo.value = 0.5
+    time.sleep(0.5)
+    maindoor_servo.value = None
+
+def maindoorclosed():
+    maindoor_servo.value = -0.6
+    time.sleep(0.5)
+    maindoor_servo.value = None
+
+
+def gimmegimmegimme(closeit=True, t=0.8):
     #if switchcl: closeit = not closeit
     #ravenbrd.set_servo_position(servo_bottom, -90 if closeit else 90)
     #time.sleep(0.8)
     #ravenbrd.set_servo_position(servo_bottom, 0)
     ravenbrd.set_servo_position(servo_bottom, -90 if closeit else 90)
     ravenbrd.set_servo_position(servo_top, -90 if closeit else 90)
-    time.sleep(0.8)
+    time.sleep(t)
 
 def release_cube(top=True):
     if top:
@@ -156,20 +190,16 @@ def setArmAngle(angle_setpoint):
     return
 
 def arm_goto(tgt):
+    sttime = time.time()
     ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.POSITION) # Set motor mode to POSITION
-    while abs(getArmAngle()-tgt) > 0.5:
+    while abs(getArmAngle()-tgt) > 0.5 and time.time() < sttime + 2:
         setArmAngle(tgt)
         ravenbrd.set_motor_torque_factor(arm_motor, 100)
 
 
 def imageproc(redangle_mp):
     _, bgr_image = capture.read()
-    #t1 = time.time()
-    #bgr_image = cv2.copyMakeBorder(bgr_image, 16, 16, 16, 16, cv2.BORDER_CONSTANT, (0, 0, 0))
     hsv_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2HSV)
-
-
-    #blurpreview = cv2.GaussianBlur(bgr_image, (11,11), 0)
 
     goodMask = cv2.inRange(
         hsv_image,
@@ -177,12 +207,6 @@ def imageproc(redangle_mp):
         np.array([95, 255, 240])
     )
 
-
-    #badMask = cv2.inRange(
-    #    hsv_image,
-    #    np.array([30, 0, 0]),
-    #    np.array([100, 255, 255])
-    #)
     badMask = cv2.inRange(
         hsv_image,
         np.array([11, 0, 0]),
@@ -195,84 +219,8 @@ def imageproc(redangle_mp):
                             np.array([0, 100, 80]), np.array([179, 255, 255]))
 
     badMask = cv2.bitwise_and(badMask, badMask2)
-
-    #bozoMask = cv2.inRange(hsv_image,
-    #                       np.array([0, 20, 150]),np.array([40, 120, 255]))
-
-
-
-    #badMask = cv2.GaussianBlur(badMask, (5,5), 0)
-
-    #whiteMask = cv2.inRange(
-    #    hsv_image,
-    #    np.array([0, 0, 235]),
-    #    np.array([180, 40, 255])
-    #)
-
-    #itsFuckingGreenNow(goodMask, goodMask)
-
-    #mask = cv2.bitwise_or(goodMask, whiteMask)
-
     greenMask = goodMask
     redMask = badMask
-
-    #goodPixels = []
-    #for index, value in np.ndenumerate(goodMask):
-    #    if value != 0: goodPixels.append(index)
-    #print(len(goodPixels))
-    """
-    params = cv2.SimpleBlobDetector_Params()
-
-    params.minThreshold = 70
-    params.maxThreshold = 255
-
-    params.filterByArea = True
-    params.minArea = 40
-    params.maxArea = 99999
-    params.filterByCircularity = False
-    params.filterByConvexity = True
-    params.minConvexity = 0.2
-    params.filterByInertia = False
-    """
-
-    #detector = cv2.SimpleBlobDetector_create(params)
-
-    #masked = cv2.bitwise_and(bgr_image, bgr_image, mask=cv2.bitwise_or(redMask, greenMask))
-    #masked = cv2.bitwise_and(bgr_image, bgr_image, mask=bozoMask)
-    #scaled = cv2.multiply(bgr_image, 1/4) + cv2.multiply(masked, 3/4)
-
-    """ keypoints = detector.detect(cv2.bitwise_not(mask))
-
-    kp_history = kp_history[1:]
-    kp_history.append(keypoints)
-
-
-
-    good_keypoints = []
-    for kp in keypoints:
-        allgood = True
-        pos_history = []
-        for hist in kp_history:
-            good = False
-            for oldkp in hist:
-                if (kp.pt[0] - oldkp.pt[0])**2 + (kp.pt[1] - oldkp.pt[1])**2 <= kp.size **2:
-                    good = True
-                    pos_history.append(oldkp.pt)
-                    break
-            if not good:
-                allgood = False
-                break
-        if allgood`:
-            if lowpass_pos:
-                newpos = [0, 0]
-                for p in pos_history:
-                    newpos[0] += p[0] / len(pos_history)
-                    newpos[1] += p[1] / len(pos_history)
-                kp.pt = newpos
-            good_keypoints.append(kp)
-
-    with_keypoints = scaled
-    """
     green_contours, _ = cv2.findContours(greenMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     red_contours, _ = cv2.findContours(redMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contours = green_contours + red_contours
@@ -301,40 +249,24 @@ def imageproc(redangle_mp):
     elif good_red:
         ty.value = good_red[0][2]
 
-
-
-    #circ_contours, _ = cv2.findContours(bozoMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    #good_circs = []
-    #for c in circ_contours:
-    #    if cv2.contourArea(c) < 150: continue
-    #    inverse_circularity = (cv2.arcLength(c,True)**2) / (4 * cv2.contourArea(c) * pi)
-    #    if inverse_circularity > 2.2: continue
-    #    good_circs.append(c)
-    #    M = cv2.moments(c)
-    #    cx = int(M['m10']/M['m00'])
-    #    cy = int(M['m01']/M['m00'])
-    #    scaled = cv2.circle(scaled, (cx,cy), 5, (255, 0, 255), 2)
-
-
     good_red = sorted(good_red, key = lambda a: -cv2.contourArea(a[0]))
     good_green = sorted(good_green, key = lambda a: -cv2.contourArea(a[0]))
     if good_red:
         p = good_red[0][1:]
         angle = (p[0] - 320) * (55 / 640)
+        cube_vfrac.value = p[1] / 480
         redangle = angle
         redangle_mp.value = redangle + 2
         redangle_new.value = 1
+        stack_type.value = REDONLY
         for g in good_green:
             if abs(g[1] - p[0]) < 50:
                 if g[2] < p[1]:
-                    stack_type.value = 3
+                    stack_type.value = GREENONTOP
                 else:
-                    stack_type.value = 2
-        #killtimer = 0
+                    stack_type.value = REDONTOP
     else:
         redangle_new.value = 2
-        pass#killtimer += 1
-    #stack_type.value = 1
 
 
 def bt(x):
@@ -350,248 +282,253 @@ def get_distance():
     #print(distanceFromHub)
     return distanceFromHub
 
-tofcycle = 0
 
-cut1 = 5
-cut2 = 10
+SEEK_CUBE = 0
+ANGLE_FOLLOW = 1
+MOVE_FOLLOW = 2
+FINAL_APPROACH = 3
+GRAB_STACK = 4
+WALL_LOCATE = 5
+WALL_APPROACH = 6
+WALL_BACKUP = 7
+DUMP_CUBES = 8
+RELEASE_GREENS = 9
+VICTORY = 10
 
-didgrab = False
+state_names = ["SEEK_CUBE", "ANGLE_FOLLOW", "MOVE_FOLLOW", "FINAL_APPROACH", "GRAB_STACK", "WALL_LOCATE", "WALL_APPROACH", "WALL_BACKUP", "DUMP_CUBES", "RELEASE_GREENS", "VICTORY"]
 
-seek_cube = True
-seek_target = 0
-seekP = 2
-seekI = 0#6
-seekD = 0#-0.005
-seekFeedforward = 24
-seekint = 0
-lastseek = 0
 
-seek_current = 0
-seek_cycle = 0
+cur_state = SEEK_CUBE
+state_timer = -400
+trans_timer = 0
 
-seek_timer = 0
+seen_for = 0
+notseen_for = 0
 
-visual_armhi = True
+report = ""
+dorept = False
+rept_cycle = 0
 
-def brakecheck():
-    ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.DIRECT)
-    for n in range(200):
-        ravenbrd.set_motor_speed_factor(arm_motor, 0)
-        ravenbrd.set_motor_torque_factor(arm_motor, 100)
-        time.sleep(0.01)
+disable_wheels = False
+actual_grab = True
+
+cumulative_stack = REDONLY
+
+greenchute = 90
+redchute = -90
+
+def transition(tgt):
+    global report, cur_state, state_timer, trans_timer, dorept
+    report += "\t==> "+state_names[tgt]
+    cur_state = tgt
+    state_timer = 0
+    trans_timer = 0
+    dorept = True
+
+def wheelturn(turn):
+    if disable_wheels: turn = 0
+    ravenbrd.set_motor_torque_factor(left_drive, 85)
+    ravenbrd.set_motor_torque_factor(right_drive, 85)
+    lturn = -turn# - 15
+    rturn = turn# - 15
+    ravenbrd.set_motor_speed_factor(left_drive, abs(bt(lturn)), reverse=lturn>0)
+    ravenbrd.set_motor_speed_factor(right_drive, abs(bt(rturn)), reverse=rturn<0)
+
+def wheelfwd(fwd):
+    if disable_wheels: fwd = 0
+    ravenbrd.set_motor_torque_factor(left_drive, 50)
+    ravenbrd.set_motor_torque_factor(right_drive, 50)
+    lturn = fwd
+    rturn = fwd
+    ravenbrd.set_motor_speed_factor(left_drive, abs(bt(lturn)), reverse=lturn>0)
+    ravenbrd.set_motor_speed_factor(right_drive, abs(bt(rturn)), reverse=rturn<0)
+
+def f3d(x):
+    return '%.3f' % x
 
 if __name__ == "__main__":
     system("v4l2-ctl --device /dev/video" + str(vdev) + " -c auto_exposure=1")
-    system("v4l2-ctl --device /dev/video" + str(vdev) + " -c exposure_time_absolute=1200") # 500
+    system("v4l2-ctl --device /dev/video" + str(vdev) + " -c exposure_time_absolute=800") # 500
     time.sleep(0.5)
     n = 0
     p1 = multiprocessing.Process(target=ipthread, args=(redangle_mp,))
     p1.start()
     gimmegimmegimme(False)
     arm_goto(armlo)
-    time.sleep(1.2)
-    """gimmegimmegimme(False)
-    wrist(0)
-    time.sleep(0.5)
-    gimmegimmegimme(True)
-    time.sleep(1)
-    arm_goto(armhi)
-    wrist(90)
-    time.sleep(0.7)
-    release_cube(True)
-    time.sleep(0.7)
-    wrist(-90)
-    time.sleep(1.3)
-    release_cube(False)
-    time.sleep(0.7)
-    wrist(0)
-    time.sleep(0.7)
-    arm_goto(armlo)
-    ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.DIRECT)
+    maindoorclosed()
+    trapdoor(True)
+    print("All systems nominal™")
+    print("Press Enter to get cooking: ")
+    input()
     while True:
-        ravenbrd.set_motor_speed_factor(arm_motor, 0)
-        ravenbrd.set_motor_torque_factor(arm_motor, 0)
-     """   
+        report = "Cur:" + state_names[cur_state]
+        # fetch data from imageproc thread
 
+        if cur_state == SEEK_CUBE:
+            if state_timer == 0:
+                seek_target = seek_current
+                cumulative_stack = 0
+            serr = seek_target - seek_current
+            seekint += serr*0.001
+            if seekint > intmax: seekint = intmax
+            if seekint < -intmax: seekint = -intmax
+            turn = seekP * serr + seekD * ((lastseek - serr)/0.001) + seekI * seekint
+            if abs(turn) < 0.5: pass
+            elif turn > 0: turn += seekFeedforward
+            elif turn < 0: turn -= seekFeedforward
+            lastseek = serr
+            report += "\tSeekErr=" + f3d(serr) + "\tTurn=" + f3d(turn)
+            wheelturn(turn)
+            if state_timer % 350 == 0:
+                dorept = True
+                report += "\tTarget=" + f3d(seek_current+18)
+                seek_target = seek_current + 10
 
+            if seen_for >= 4:
+                transition(ANGLE_FOLLOW)
 
-    while True:
-        # Read a frame
-        #dist = get_distance()
-        if redangle_new.value:
-            if redangle_new.value == 2:# or stack_type.value == 1:
-                seek_timer += 1
-            else:
-                seek_timer = 0
-            if seek_timer == 100:
-                visual_armhi = not visual_armhi
-            #seek_cube = seek_timer > 200
-            seek_cube = False
-            redangle_new.value = 0
-            redangle = redangle_mp.value
-
-        #if good_green: scaled = cv2.drawContours(scaled, [g[0] for g in good_green], -1, (0, 255, 0), 3)
-        #if good_red: scaled = cv2.drawContours(scaled, [g[0] for g in good_red], -1, (0, 0, 255), 3)
-        #scaled = cv2.drawContours(scaled, good_circs, -1, (0, 255, 255), 3)
-        #with_keypoints = cv2.drawKeypoints(scaled, good_keypoints, np.array([]), (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-        # Display the frame in the video feed
-        # NOTE: `cv2.imshow` takes images in BGR
-        
-        #cv2.putText(scaled, str(len(good_red) + len(good_green)) + " contour(s)", (30, 30), cv2.FONT_HERSHEY_SIMPLEX,
-        #        1,
-        #        (0, 0, 255),
-        #        2)
-
-
-
-
-        #cv2.imshow("Video Feed", blurpreview)
-
-        if visual_armhi:
-            ravenbrd.set_motor_torque_factor(arm_motor, 100)
-            setArmAngle(0)
-        else:
-            ravenbrd.set_motor_torque_factor(arm_motor, 0)
-            setArmAngle(0)
-            
-
-        t1 = time.time()
-        if donehere >= 6:
-            ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
-            ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-            ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, 0) #not sure why need rev
-            ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
-            if not didgrab:
-                print("GO")
-                gimmegimmegimme(True)
-                time.sleep(0.12)
-                gimmegimmegimme(False)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1,50,reverse=True) #not sure why need rev
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2,50)
-                time.sleep(0.12)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, 0) #not sure why need rev
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
-                time.sleep(0.5)
-                gimmegimmegimme(True)
-                print("i grabbed: ", ["????", "RED", "REDONTOP", "GREENONTOP"][stack_type.value])
-                time.sleep(1)
-                arm_goto(armhi)
-                wrist(90)
-                time.sleep(0.7)
-                release_cube(True)
-                time.sleep(0.7)
-                wrist(-90)
-                time.sleep(1.3)
-                release_cube(False)
-                time.sleep(0.7)
-                wrist(0)
-                time.sleep(0.7)
-                arm_goto(armlo)
-                #ravenbrd.set_motor_mode(arm_motor, Raven.MotorMode.DIRECT)
-                didgrab = False
-                angleMode = True
-                visual_armhi = False
-                donehere = 0
-        elif angleMode or seek_cube:
+        elif cur_state == ANGLE_FOLLOW:
             redint += redangle*0.001
             if redint > intmax: redint = intmax
             if redint < -intmax: redint = -intmax
-            rederiv = (lastred - redangle)/0.001 
+            rederiv = (lastred - redangle)/0.001
             lastred = redangle
 
-            
+
             turn = redangle * angleP + redint * angleI + rederiv * angleD
             turn = -turn
             if abs(turn) < 0.5: pass
             elif turn > 0: turn += angleFeedforward
             elif turn < 0: turn -= angleFeedforward
-            
-            if abs(redangle) < cut1:
-                amtimer += 1
+            report += "\tAngleErr=" + f3d(redangle) + "\tTurn=" + f3d(turn)
+            wheelturn(turn)
+
+            if abs(redangle) < angleToMove:
+                trans_timer += 1
             else:
-                amtimer = 0
-            if amtimer > 12:
-                angleMode = True
-                turn = 0
-                amtimer = 50
-            if seek_cube:
-                #turn = angleFeedforward*2.5
-                serr = seek_target - seek_current
-                seekint += serr*0.001
-                if seekint > intmax: seekint = intmax
-                if seekint < -intmax: seekint = -intmax
-                turn = seekP * serr + seekD * ((lastseek - serr)/0.001) + seekI * seekint
-                if abs(turn) < 0.5: pass
-                elif turn > 0: turn += seekFeedforward
-                elif turn < 0: turn -= seekFeedforward
-                lastseek = serr
-                print("seek_cube", seek_current, seek_target, turn)
+                trans_timer = 0
+            if trans_timer > 6:
+                transition(MOVE_FOLLOW)
+            elif notseen_for >= 4:
+                transition(SEEK_CUBE)
+        elif cur_state == MOVE_FOLLOW:
+            wheelfwd(30)
+            report += "\tAngleErr= " + f3d(redangle) + "\tCubeHeight=" + f3d(cube_vfrac.value)
+            if abs(redangle) > moveToAngle:
+                trans_timer += 1
             else:
-                print(redangle, -turn, ["????", "RED", "REDONTOP", "GREENONTOP"][stack_type.value])
-            if turn > 100: turn = 100
-            if turn < -100: turn = -100
-            #if redangle < -4: turn = 25
-            #elif redangle > 4: turn = -25
-            #else: turn = 0
-            #turn = 0
-            if killtimer < 5:
-                if not dryrun:
-                    ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
-                    ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-                    lturn = -turn# - 15
-                    rturn = turn# - 15
-                    ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, abs(bt(lturn)), reverse=lturn>0) #not sure why need rev
-                    ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, abs(bt(rturn)), reverse=rturn<0)
-                #else:
-                #    print(turn)
-        else:
-            ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
-            ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-            lturn = 45
-            rturn = 45
-            if not seek_cube:
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, abs(bt(lturn)), reverse=lturn>0) #not sure why need rev
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, abs(bt(rturn)), reverse=rturn<0)
-            amtimer -=1
-            #if amtimer == 0:
-            print(redangle)
-            if abs(redangle) > cut2:
-                angleMode = True
-                redint = 0
-        tofcycle += 1
-        if donehere < 6 and tofcycle % 10 == 0:
-            if timeofflight is not None:
-                t = timeofflight.range
-                if t < 100:
-                    pass#donehere += 1
+                trans_timer = 0
+            if trans_timer > 2:##and cube_vfrac.value < 0.75:
+                transition(ANGLE_FOLLOW)
+            elif timeofflight.range < 140:
+                transition(FINAL_APPROACH)
+            elif notseen_for >= 4:
+                if cube_vfrac.value > 0.75:
+                    transition(FINAL_APPROACH)
                 else:
-                    donehere = 0
-        #print((time.time() - t1)*1000)
+                    transition(SEEK_CUBE)
+        elif cur_state == FINAL_APPROACH:
+            wheelfwd(30)
+            tof_range = timeofflight.range
+            maxtime = 42
+            report += "\tTimeout " + str(state_timer)+"/"+str(maxtime) + "\tTOFRange=" + f3d(tof_range)
+            if state_timer > maxtime:
+                transition(SEEK_CUBE)
+            elif tof_range < 90:
+                transition(GRAB_STACK)
+        elif cur_state == GRAB_STACK:
+            wheelfwd(0)
+            if not actual_grab:
+                time.sleep(0.5)
+                transition(VICTORY)
+            elif state_timer > 20:
+                wrist(0)
+                gimmegimmegimme(True)
+                time.sleep(0.12)
+                gimmegimmegimme(False)
+                ravenbrd.set_motor_torque_factor(left_drive, 85)
+                ravenbrd.set_motor_torque_factor(right_drive, 85)
+                ravenbrd.set_motor_speed_factor(left_drive,35,reverse=True) #not sure why need rev
+                ravenbrd.set_motor_speed_factor(right_drive,35)
+                gimmegimmegimme(True, t=0.4)
+                ravenbrd.set_motor_torque_factor(left_drive, 85)
+                ravenbrd.set_motor_torque_factor(right_drive, 85)
+                ravenbrd.set_motor_speed_factor(left_drive, 0) #not sure why need rev
+                ravenbrd.set_motor_speed_factor(right_drive, 0)
+                time.sleep(0.5)
+                arm_goto(armhi)
+                
+                if cumulative_stack == REDONLY:
+                    wrist(redchute)
+                    time.sleep(0.7)
+                    release_cube(True)
+                    time.sleep(0.5)
+                    release_cube(False)
+                else:
+                    wrist(redchute if cumulative_stack == REDONTOP else greenchute)
+                    time.sleep(0.7)
+                    release_cube(True)
+                    time.sleep(0.7)
+                    wrist(greenchute if cumulative_stack == REDONTOP else redchute)
+                    time.sleep(1.3)
+                    release_cube(False)
+                    time.sleep(0.4)
+
+                time.sleep(0.7)
+                wrist(0)
+                time.sleep(0.7)
+                arm_goto(armlo)
+                time.sleep(0.5)
+                transition(RELEASE_GREENS)
+            report += "\tType: " + ["", "RED", "REDONTOP", "GREENONTOP"][cumulative_stack]
+        elif cur_state == RELEASE_GREENS:
+            trapdoor(False)
+            maindooropen()
+            time.sleep(0.5)
+            ravenbrd.set_motor_torque_factor(left_drive, 85)
+            ravenbrd.set_motor_torque_factor(right_drive, 85)
+            ravenbrd.set_motor_speed_factor(left_drive,35,reverse=True) #not sure why need rev
+            ravenbrd.set_motor_speed_factor(right_drive,35)
+            time.sleep(0.5)
+            ravenbrd.set_motor_torque_factor(left_drive, 85)
+            ravenbrd.set_motor_torque_factor(right_drive, 85)
+            ravenbrd.set_motor_speed_factor(left_drive, 0) #not sure why need rev
+            ravenbrd.set_motor_speed_factor(right_drive, 0)
+            transition(VICTORY)
+
+        elif cur_state == VICTORY:
+            if state_timer == 1000:
+                pass
+        else:
+            wheelfwd(0)
+        
+        if redangle_new.value:
+            dorept = True
+            if redangle_new.value == 2:# or stack_type.value == 1:
+                seen_for = 0
+                notseen_for += 1
+                report += "\t(No Stack)"
+            else:
+                notseen_for = 0
+                seen_for += 1
+                report += "\t(" + ["", "RED", "REDONTOP", "GREENONTOP"][stack_type.value] + " Seen)"
+                if cur_state == ANGLE_FOLLOW or cur_state == MOVE_FOLLOW:
+                    if cumulative_stack <= REDONLY:
+                        if stack_type.value > REDONLY:
+                            cumulative_stack = stack_type.value
+                        elif stack_type == REDONLY:
+                            cumulative_stack = REDONLY
+                    else:
+                        if stack_type.value > REDONLY and stack_type.value != cumulative_stack:
+                            cumulative_stack = stack_type.value
+                redangle = redangle_mp.value
+            redangle_new.value = 0
         zvel = imu.get_data()[1][2]
         redangle += factor * zvel * (180 / pi) * 0.001
         seek_current += zvel * (180 / pi) * 0.001
-        seek_cycle += 1
-        if seek_cycle % 600 == 0:
-            seek_target = seek_current + 18
+        state_timer += 1
+        if dorept or rept_cycle % 20 == 0:
+            print(report)
+        dorept = False
+        rept_cycle += 1
         time.sleep(0.001)
-        if dryrun:
-            pass#cv2.imshow("ITS FUCKKING RED NOW", scaled)
-        """
-        good_keypoints = sorted(good_keypoints, key=lambda k: k.size)
-        if good_keypoints:
-            redcube = good_keypoints[-1]
-            angle = (redcube.pt[0] - 320) * (55 / 640)
-            print("Red cube angle:", angle)
-        """
-
-        # Wait for the user to press Q
-        #k = cv2.waitKey(1) & 0xFF
-        #if k == ord('q'):
-        #    # Quit the program
-        #    break
-        #if k == ord('l'):
-        #    lowpass_pos = not lowpass_pos
