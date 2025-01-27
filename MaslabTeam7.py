@@ -252,10 +252,10 @@ moveToAngle = 8
 
 
 seek_target = 0
-seekP = 3
+seekP = 1.5
 seekI = 0#6
 seekD = -0.003
-seekFeedforward = 55
+seekFeedforward = 30
 seekint = 0
 lastseek = 0
 
@@ -305,21 +305,21 @@ def transition(tgt):
 
 def wheelturn(turn):
     if disable_wheels: turn = 0
-    ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
-    ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
+    ravenbrd.set_motor_torque_factor(left_drive, 85)
+    ravenbrd.set_motor_torque_factor(right_drive, 85)
     lturn = -turn# - 15
     rturn = turn# - 15
-    ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, abs(bt(lturn)), reverse=lturn>0)
-    ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, abs(bt(rturn)), reverse=rturn<0)
+    ravenbrd.set_motor_speed_factor(left_drive, abs(bt(lturn)), reverse=lturn>0)
+    ravenbrd.set_motor_speed_factor(right_drive, abs(bt(rturn)), reverse=rturn<0)
 
 def wheelfwd(fwd):
     if disable_wheels: fwd = 0
-    ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
-    ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
+    ravenbrd.set_motor_torque_factor(left_drive, 50)
+    ravenbrd.set_motor_torque_factor(right_drive, 50)
     lturn = fwd
     rturn = fwd
-    ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, abs(bt(lturn)), reverse=lturn>0)
-    ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, abs(bt(rturn)), reverse=rturn<0)
+    ravenbrd.set_motor_speed_factor(left_drive, abs(bt(lturn)), reverse=lturn>0)
+    ravenbrd.set_motor_speed_factor(right_drive, abs(bt(rturn)), reverse=rturn<0)
 
 def f3d(x):
     return '%.3f' % x
@@ -388,7 +388,7 @@ if __name__ == "__main__":
             elif notseen_for >= 4:
                 transition(SEEK_CUBE)
         elif cur_state == MOVE_FOLLOW:
-            wheelfwd(48)
+            wheelfwd(24)
             report += "\tAngleErr= " + f3d(redangle) + "\tCubeHeight=" + f3d(cube_vfrac.value)
             if abs(redangle) > moveToAngle:
                 trans_timer += 1
@@ -404,7 +404,7 @@ if __name__ == "__main__":
                 else:
                     transition(SEEK_CUBE)
         elif cur_state == FINAL_APPROACH:
-            wheelfwd(40)
+            wheelfwd(20)
             tof_range = timeofflight.range
             maxtime = 42
             report += "\tTimeout " + str(state_timer)+"/"+str(maxtime) + "\tTOFRange=" + f3d(tof_range)
@@ -422,15 +422,15 @@ if __name__ == "__main__":
                 gimmegimmegimme(True)
                 time.sleep(0.12)
                 gimmegimmegimme(False)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1,70,reverse=True) #not sure why need rev
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2,70)
+                ravenbrd.set_motor_torque_factor(left_drive, 85)
+                ravenbrd.set_motor_torque_factor(right_drive, 85)
+                ravenbrd.set_motor_speed_factor(left_drive,35,reverse=True) #not sure why need rev
+                ravenbrd.set_motor_speed_factor(right_drive,35)
                 gimmegimmegimme(True, t=0.4)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
-                ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, 0) #not sure why need rev
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
+                ravenbrd.set_motor_torque_factor(left_drive, 85)
+                ravenbrd.set_motor_torque_factor(right_drive, 85)
+                ravenbrd.set_motor_speed_factor(left_drive, 0) #not sure why need rev
+                ravenbrd.set_motor_speed_factor(right_drive, 0)
                 time.sleep(0.5)
                 arm_goto(armhi)
                 
