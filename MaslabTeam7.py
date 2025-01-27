@@ -17,6 +17,7 @@ import board, busio
 import board
 import busio
 import adafruit_vl53l0x
+import gpiozero
 
 from raven import Raven
 
@@ -59,6 +60,8 @@ arm_motor = Raven.MotorChannel.CH3
 servo_bottom = Raven.ServoChannel.CH1
 servo_top = Raven.ServoChannel.CH2
 wrist_servo = Raven.ServoChannel.CH3
+trapdoor_servo = Raven.ServoChannel.CH4
+
 
 ravenbrd = Raven()
 ravenbrd.set_motor_encoder(arm_motor, 0) # Reset encoder
@@ -125,6 +128,24 @@ seekint = 0
 lastseek = 0
 
 seek_current = 0
+
+trapdoor_open = -80
+trapdoor_closed = 30
+
+maindoor_servo = gpiozero.Servo(19, min_pulse_width=0.0005, max_pulse_width=0.0025)
+
+def trapdoor(closed=True):
+    ravenbrd.set_servo_position(trapdoor_servo, trapdoor_closed if closed else trapdoor_open)
+
+def maindooropen():
+    maindoor_servo.value = 0.5
+    time.sleep(0.5)
+    maindoor_servo.value = None
+
+def maindoorclosed():
+    maindoor_servo.value = -0.6
+    time.sleep(0.5)
+    maindoor_servo.value = None
 
 
 def gimmegimmegimme(closeit=True, t=0.8):
@@ -334,6 +355,8 @@ if __name__ == "__main__":
     p1.start()
     gimmegimmegimme(False)
     arm_goto(armlo)
+    maindoorclosed()
+    trapdoor(True)
     print("All systems nominal™")
     print("Press Enter to get cooking: ")
     input()
@@ -456,10 +479,23 @@ if __name__ == "__main__":
                 time.sleep(0.7)
                 arm_goto(armlo)
                 time.sleep(0.5)
-                transition(VICTORY)
+                transition(RELEASE_GREENS)
             report += "\tType: " + ["", "RED", "REDONTOP", "GREENONTOP"][cumulative_stack]
         elif cur_state == RELEASE_GREENS:
-            pass
+            trapdoor(False)
+            maindooropen()
+            time.sleep(0.5)
+            ravenbrd.set_motor_torque_factor(left_drive, 85)
+            ravenbrd.set_motor_torque_factor(right_drive, 85)
+            ravenbrd.set_motor_speed_factor(left_drive,35,reverse=True) #not sure why need rev
+            ravenbrd.set_motor_speed_factor(right_drive,35)
+            time.sleep(0.5)
+            ravenbrd.set_motor_torque_factor(left_drive, 85)
+            ravenbrd.set_motor_torque_factor(right_drive, 85)
+            ravenbrd.set_motor_speed_factor(left_drive, 0) #not sure why need rev
+            ravenbrd.set_motor_speed_factor(right_drive, 0)
+            transition(VICTORY)
+
         elif cur_state == VICTORY:
             if state_timer == 1000:
                 pass
