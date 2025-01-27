@@ -120,7 +120,7 @@ seek_target = 0
 seekP = .2
 seekI = 0#6
 seekD = 0 #-.003
-seekFeedforward = 28
+seekFeedforward = 29
 seekint = 0
 lastseek = 0
 
