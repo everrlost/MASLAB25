@@ -74,6 +74,9 @@ redangle_mp = multiprocessing.Value('d', 0)
 redangle_new = multiprocessing.Value('i', 0)
 ty = multiprocessing.Value('d', 0)
 stack_type = multiprocessing.Value('i', 1)
+REDONLY = 1
+REDONTOP = 2
+GREENONTOP = 3
 cube_vfrac = multiprocessing.Value('d', 0)
 # 0: whatever
 # 1: red cube alone
@@ -85,10 +88,10 @@ rederiv = 0
 lastred = 0
 
 
-angleP = 1.3
-angleI = 7
+angleP = 1.6
+angleI = 9
 angleD = -0.004
-angleFeedforward = 27
+angleFeedforward = 38
 intmax = 4.5
 killtimer = 0
 
@@ -105,17 +108,18 @@ switchcl = True
 
 
 armlo = 5
+armmid = -40
 armhi = -195
 
 
-def gimmegimmegimme(closeit=True):
+def gimmegimmegimme(closeit=True, t=0.8):
     #if switchcl: closeit = not closeit
     #ravenbrd.set_servo_position(servo_bottom, -90 if closeit else 90)
     #time.sleep(0.8)
     #ravenbrd.set_servo_position(servo_bottom, 0)
     ravenbrd.set_servo_position(servo_bottom, -90 if closeit else 90)
     ravenbrd.set_servo_position(servo_top, -90 if closeit else 90)
-    time.sleep(0.8)
+    time.sleep(t)
 
 def release_cube(top=True):
     if top:
@@ -217,13 +221,13 @@ def imageproc(redangle_mp):
         redangle = angle
         redangle_mp.value = redangle + 2
         redangle_new.value = 1
-        stack_type.value = 1
+        stack_type.value = REDONLY
         for g in good_green:
             if abs(g[1] - p[0]) < 50:
                 if g[2] < p[1]:
-                    stack_type.value = 3
+                    stack_type.value = GREENONTOP
                 else:
-                    stack_type.value = 2
+                    stack_type.value = REDONTOP
     else:
         redangle_new.value = 2
 
@@ -248,10 +252,10 @@ moveToAngle = 8
 
 
 seek_target = 0
-seekP = 2
+seekP = 3
 seekI = 0#6
-seekD = 0#-0.005
-seekFeedforward = 24
+seekD = -0.003
+seekFeedforward = 55
 seekint = 0
 lastseek = 0
 
@@ -266,9 +270,11 @@ WALL_LOCATE = 5
 WALL_APPROACH = 6
 WALL_BACKUP = 7
 DUMP_CUBES = 8
-VICTORY = 9
+RELEASE_GREENS = 9
+VICTORY = 10
 
-state_names = ["SEEK_CUBE", "ANGLE_FOLLOW", "MOVE_FOLLOW", "FINAL_APPROACH", "GRAB_STACK", "WALL_LOCATE", "WALL_APPROACH", "WALL_BACKUP", "DUMP_CUBES", "VICTORY"]
+state_names = ["SEEK_CUBE", "ANGLE_FOLLOW", "MOVE_FOLLOW", "FINAL_APPROACH", "GRAB_STACK", "WALL_LOCATE", "WALL_APPROACH", "WALL_BACKUP", "DUMP_CUBES", "RELEASE_GREENS", "VICTORY"]
+
 
 cur_state = SEEK_CUBE
 state_timer = -400
@@ -284,7 +290,7 @@ rept_cycle = 0
 disable_wheels = False
 actual_grab = True
 
-cumulative_stack = 0
+cumulative_stack = REDONLY
 
 greenchute = 90
 redchute = -90
@@ -349,10 +355,10 @@ if __name__ == "__main__":
             lastseek = serr
             report += "\tSeekErr=" + f3d(serr) + "\tTurn=" + f3d(turn)
             wheelturn(turn)
-            if state_timer % 600 == 0:
+            if state_timer % 350 == 0:
                 dorept = True
                 report += "\tTarget=" + f3d(seek_current+18)
-                seek_target = seek_current + 18
+                seek_target = seek_current + 10
 
             if seen_for >= 4:
                 transition(ANGLE_FOLLOW)
@@ -382,7 +388,7 @@ if __name__ == "__main__":
             elif notseen_for >= 4:
                 transition(SEEK_CUBE)
         elif cur_state == MOVE_FOLLOW:
-            wheelfwd(35)
+            wheelfwd(48)
             report += "\tAngleErr= " + f3d(redangle) + "\tCubeHeight=" + f3d(cube_vfrac.value)
             if abs(redangle) > moveToAngle:
                 trans_timer += 1
@@ -398,13 +404,13 @@ if __name__ == "__main__":
                 else:
                     transition(SEEK_CUBE)
         elif cur_state == FINAL_APPROACH:
-            wheelfwd(35)
+            wheelfwd(40)
             tof_range = timeofflight.range
             maxtime = 42
             report += "\tTimeout " + str(state_timer)+"/"+str(maxtime) + "\tTOFRange=" + f3d(tof_range)
             if state_timer > maxtime:
                 transition(SEEK_CUBE)
-            elif timeofflight.range < 90:
+            elif tof_range < 90:
                 transition(GRAB_STACK)
         elif cur_state == GRAB_STACK:
             wheelfwd(0)
@@ -418,32 +424,31 @@ if __name__ == "__main__":
                 gimmegimmegimme(False)
                 ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
                 ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1,50,reverse=True) #not sure why need rev
-                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2,50)
-                time.sleep(0.12)
+                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1,70,reverse=True) #not sure why need rev
+                ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2,70)
+                gimmegimmegimme(True, t=0.4)
                 ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
                 ravenbrd.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH1, 0) #not sure why need rev
                 ravenbrd.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
                 time.sleep(0.5)
-                gimmegimmegimme(True)
-                time.sleep(1)
                 arm_goto(armhi)
                 
-                if cumulative_stack == 1:
+                if cumulative_stack == REDONLY:
                     wrist(redchute)
                     time.sleep(0.7)
                     release_cube(True)
                     time.sleep(0.5)
                     release_cube(False)
                 else:
-                    wrist(redchute if cumulative_stack == 2 else greenchute)
+                    wrist(redchute if cumulative_stack == REDONTOP else greenchute)
                     time.sleep(0.7)
                     release_cube(True)
                     time.sleep(0.7)
-                    wrist(greenchute if cumulative_stack == 2 else redchute)
+                    wrist(greenchute if cumulative_stack == REDONTOP else redchute)
                     time.sleep(1.3)
                     release_cube(False)
+                    time.sleep(0.4)
 
                 time.sleep(0.7)
                 wrist(0)
@@ -452,6 +457,11 @@ if __name__ == "__main__":
                 time.sleep(0.5)
                 transition(VICTORY)
             report += "\tType: " + ["", "RED", "REDONTOP", "GREENONTOP"][cumulative_stack]
+        elif cur_state == RELEASE_GREENS:
+            pass
+        elif cur_state == VICTORY:
+            if state_timer == 1000:
+                pass
         else:
             wheelfwd(0)
         
@@ -466,10 +476,14 @@ if __name__ == "__main__":
                 seen_for += 1
                 report += "\t(" + ["", "RED", "REDONTOP", "GREENONTOP"][stack_type.value] + " Seen)"
                 if cur_state == ANGLE_FOLLOW or cur_state == MOVE_FOLLOW:
-                    if cumulative_stack <= 1:
-                        cumulative_stack = stack_type.value
-                    elif cumulative_stack != stack_type.value:
-                        cumulative_stack = 1
+                    if cumulative_stack <= REDONLY:
+                        if stack_type.value > REDONLY:
+                            cumulative_stack = stack_type.value
+                        elif stack_type == REDONLY:
+                            cumulative_stack = REDONLY
+                    else:
+                        if stack_type.value > REDONLY and stack_type.value != cumulative_stack:
+                            cumulative_stack = stack_type.value
                 redangle = redangle_mp.value
             redangle_new.value = 0
         zvel = imu.get_data()[1][2]
